@@ -9,7 +9,6 @@ from datetime import timedelta
 from contextlib import asynccontextmanager
 from typing import Optional
 
-# 🔹 Imports de tus módulos locales
 from src.db import init_db, get_conn
 from src.auth import (
     create_access_token, verify_password, hash_password,
@@ -17,25 +16,23 @@ from src.auth import (
 )
 from src import inventory
 
-# 📝 Helper para logs visibles en Render
 def log_error(msg: str):
     print(f" LOG: {msg}", file=sys.stderr)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        log_error("Iniciando base de datos...")
+        log_error("Iniciando BD...")
         init_db()
-        log_error("✅ Base de datos lista.")
+        log_error("✅ BD lista")
     except Exception as e:
-        log_error(f"💥 Error crítico en BD: {e}")
+        log_error(f"💥 Error BD: {e}")
         raise
     yield
 
-app = FastAPI(title="🍽️ Restaurante Solinilla", lifespan=lifespan)
+app = FastAPI(title="🍽️ Solinilla", lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
-# 📦 Modelos
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -56,7 +53,6 @@ class MovimientoCreate(BaseModel):
     cantidad: float
     motivo: str
 
-#  Rutas Web
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -65,72 +61,71 @@ async def root(request: Request):
 async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
 
-# 🧪 API: Test
 @app.get("/api/test")
 def api_test():
-    return {"status": "online", "msg": "Solinilla Backend OK"}
+    return {"status": "online", "msg": "Solinilla OK"}
 
-# 🔐 API: Login
 @app.post("/api/login")
 async def login(data: LoginRequest):
-    log_error(f"Intento de login: {data.username}")
+    log_error(f"Login: {data.username}")
     with get_conn() as conn:
-        user = conn.execute("SELECT * FROM usuarios WHERE username=?", (data.username,)).fetchone()
-    
-    # Si no hay user y es admin, lo creamos al vuelo (solo primera vez)
-    if not user and data.username.lower() == "admin" and data.password == "Solinilla2026!":
-        hashed = hash_password("Solinilla2026!")
-        with get_conn() as conn:
-            conn.execute("INSERT OR IGNORE INTO usuarios (username, password_hash, rol) VALUES (?, ?, ?)",
-                         ("admin", hashed, "admin"))
-            conn.commit()
-        user = conn.execute("SELECT * FROM usuarios WHERE username=?", ("admin",)).fetchone()
-        log_error("✅ Usuario admin creado automáticamente.")
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM usuarios WHERE username=%s", (data.username,))
+            user = cur.fetchone()
+        
+        if not user and data.username.lower() == "admin" and data.password == "Admin2026!":
+            hashed = hash_password("Admin2026!")
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO usuarios (username, password_hash, rol) 
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (username) DO NOTHING
+                """, ("admin", hashed, "admin"))
+                conn.commit()
+            cur.execute("SELECT * FROM usuarios WHERE username=%s", ("admin",))
+            user = cur.fetchone()
+            log_error("✅ Admin creado")
 
-    if not user or not verify_password(data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+        if not user or not verify_password(data.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
-    token = create_access_token(
-        data={"sub": user["username"], "rol": user["rol"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    return {"access_token": token, "token_type": "bearer", "rol": user["rol"]}
+        token = create_access_token(
+            data={"sub": user["username"], "rol": user["rol"]},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        return {"access_token": token, "token_type": "bearer", "rol": user["rol"]}
 
-# 🛠️ API: Debug para crear admin manualmente (Si falla el login automático)
 @app.post("/api/debug/crear-admin")
 async def crear_admin_debug():
-    """Crea admin manualmente con contraseña compatible con bcrypt."""
-    from src.auth import hash_password
     try:
-        # 🔹 Usamos contraseña corta para evitar límite de 72 bytes de bcrypt
-        password_temp = "Admin2026!"  
-        hashed = hash_password(password_temp)
-        
+        hashed = hash_password("Admin2026!")
         with get_conn() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO usuarios (username, password_hash, rol) 
-                VALUES (?, ?, ?)
-            """, ("admin", hashed, "admin"))
-            conn.commit()
-        return {
-            "msg": "✅ Admin creado exitosamente.",
-            "nota": f"Usa contraseña temporal: {password_temp}"
-        }
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO usuarios (username, password_hash, rol) 
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (username) DO NOTHING
+                """, ("admin", hashed, "admin"))
+                conn.commit()
+        return {"msg": "✅ Admin creado. Login: admin / Admin2026!"}
     except Exception as e:
         return {"msg": f"❌ Error: {str(e)}"}
-#  API: Crear usuario (Solo Admin)
+
 @app.post("/api/admin/crear-usuario")
 async def crear_usuario(data: UserCreate, admin: dict = Depends(require_admin)):
     with get_conn() as conn:
         try:
             hashed = hash_password(data.password)
-            conn.execute("INSERT INTO usuarios (username, password_hash, rol) VALUES (?, ?, ?)",
-                         (data.username, hashed, data.rol))
-            return {"msg": f"✅ Usuario {data.username} creado."}
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO usuarios (username, password_hash, rol) 
+                    VALUES (%s, %s, %s)
+                """, (data.username, hashed, data.rol))
+                conn.commit()
+            return {"msg": f"✅ Usuario {data.username} creado"}
         except Exception:
-            raise HTTPException(status_code=400, detail="El usuario ya existe.")
+            raise HTTPException(status_code=400, detail="Usuario ya existe")
 
-# 📦 API: Inventario
 @app.get("/api/productos")
 async def get_productos(user: dict = Depends(get_current_user)):
     return {"productos": inventory.obtener_productos()}

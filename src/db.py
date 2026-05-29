@@ -1,83 +1,92 @@
-import sqlite3
 import os
 import sys
-from pathlib import Path
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
 
 def log(msg: str):
     print(f"🗄️ {msg}", file=sys.stderr)
     sys.stderr.flush()
 
-# ✅ Ruta simple y directa: Render usa /data, local usa data/
-if os.getenv("PORT"):  # Estamos en Render
-    DB_PATH = Path("/data/solinilla.db")
-    log(f"🌐 Render detectado. Usando: {DB_PATH}")
-else:  # Local
-    DB_PATH = Path("data/solinilla.db")
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    log(f"💻 Local detectado. Usando: {DB_PATH}")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise RuntimeError("❌ DATABASE_URL no configurada")
+
+log(f"🌐 Conectando a PostgreSQL...")
+
+@contextmanager
 def get_conn():
-    """Obtiene conexión SQLite con retry simple."""
+    conn = None
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=30, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA foreign_keys = ON;")
-        log(f"✅ Conexión exitosa: {DB_PATH}")
-        return conn
-    except sqlite3.OperationalError as e:
-        log(f"❌ Error conectando a {DB_PATH}: {e}")
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.cursor_factory = RealDictCursor
+        log("✅ Conexión exitosa")
+        yield conn
+    except Exception as e:
+        log(f"❌ Error: {e}")
         raise
+    finally:
+        if conn:
+            conn.close()
 
 def init_db():
-    """Inicializa tablas si no existen."""
-    log(f"🔧 Iniciando init_db() con: {DB_PATH}")
+    log("🔧 Creando tablas...")
     try:
         with get_conn() as conn:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS usuarios (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    rol TEXT NOT NULL DEFAULT 'usuario' CHECK(rol IN ('admin', 'usuario')),
-                    creado_en TEXT DEFAULT (datetime('now','localtime'))
-                );
-                CREATE TABLE IF NOT EXISTS productos (
-                    id TEXT PRIMARY KEY,
-                    nombre TEXT NOT NULL,
-                    stock REAL NOT NULL DEFAULT 0,
-                    fecha_vencimiento TEXT
-                );
-                CREATE TABLE IF NOT EXISTS movimientos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    producto_id TEXT NOT NULL,
-                    tipo TEXT NOT NULL CHECK(tipo IN ('entrada', 'salida')),
-                    cantidad REAL NOT NULL,
-                    motivo TEXT,
-                    fecha TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-                    FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS snapshots_inventario (
-                    fecha TEXT NOT NULL,
-                    producto_id TEXT NOT NULL,
-                    stock_cierre REAL NOT NULL DEFAULT 0,
-                    PRIMARY KEY (fecha, producto_id),
-                    FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS cierres_inventario (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fecha TEXT NOT NULL,
-                    total_movimientos INTEGER,
-                    total_productos INTEGER,
-                    observaciones TEXT,
-                    creado_en TEXT DEFAULT (datetime('now','localtime'))
-                );
-            """)
-            conn.commit()
-        log("✅ init_db() completado")
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS usuarios (
+                        id SERIAL PRIMARY KEY,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        rol TEXT NOT NULL DEFAULT 'usuario' CHECK(rol IN ('admin', 'usuario')),
+                        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS productos (
+                        id TEXT PRIMARY KEY,
+                        nombre TEXT NOT NULL,
+                        stock REAL NOT NULL DEFAULT 0,
+                        fecha_vencimiento TEXT
+                    )
+                """)
+                
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS movimientos (
+                        id SERIAL PRIMARY KEY,
+                        producto_id TEXT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+                        tipo TEXT NOT NULL CHECK(tipo IN ('entrada', 'salida')),
+                        cantidad REAL NOT NULL,
+                        motivo TEXT,
+                        fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS snapshots_inventario (
+                        fecha DATE NOT NULL,
+                        producto_id TEXT NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+                        stock_cierre REAL NOT NULL DEFAULT 0,
+                        PRIMARY KEY (fecha, producto_id)
+                    )
+                """)
+                
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS cierres_inventario (
+                        id SERIAL PRIMARY KEY,
+                        fecha DATE NOT NULL,
+                        total_movimientos INTEGER,
+                        total_productos INTEGER,
+                        observaciones TEXT,
+                        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                conn.commit()
+        log("✅ Tablas creadas")
     except Exception as e:
-        log(f"💥 ERROR en init_db: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
+        log(f"💥 ERROR: {e}")
         raise
