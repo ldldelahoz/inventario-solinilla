@@ -99,18 +99,25 @@ async def login(data: LoginRequest):
 # 🛠️ API: Debug para crear admin manualmente (Si falla el login automático)
 @app.post("/api/debug/crear-admin")
 async def crear_admin_debug():
+    """Crea admin manualmente con contraseña compatible con bcrypt."""
+    from src.auth import hash_password
     try:
-        hashed = hash_password("Solinilla2026!")
+        # 🔹 Usamos contraseña corta para evitar límite de 72 bytes de bcrypt
+        password_temp = "Admin2026!"  
+        hashed = hash_password(password_temp)
+        
         with get_conn() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO usuarios (username, password_hash, rol) 
                 VALUES (?, ?, ?)
             """, ("admin", hashed, "admin"))
             conn.commit()
-        return {"msg": "✅ Admin creado exitosamente. Intenta login ahora."}
+        return {
+            "msg": "✅ Admin creado exitosamente.",
+            "nota": f"Usa contraseña temporal: {password_temp}"
+        }
     except Exception as e:
         return {"msg": f"❌ Error: {str(e)}"}
-
 #  API: Crear usuario (Solo Admin)
 @app.post("/api/admin/crear-usuario")
 async def crear_usuario(data: UserCreate, admin: dict = Depends(require_admin)):
