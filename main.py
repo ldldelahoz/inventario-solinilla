@@ -99,6 +99,22 @@ async def login(data: LoginRequest):
         log_error(f"💥 Error en /api/login: {e}")
         raise
 
+@app.post("/api/debug/crear-admin")
+async def crear_admin_debug():
+    """Crea admin manualmente. Eliminar después de usar."""
+    from src.auth import hash_password
+    try:
+        hashed = hash_password("Solinilla2026!")
+        with get_conn() as conn:
+            # Insertar o actualizar para asegurar que existe
+            conn.execute("""
+                INSERT OR REPLACE INTO usuarios (username, password_hash, rol) 
+                VALUES (?, ?, ?)
+            """, ("admin", hashed, "admin"))
+            conn.commit()
+        return {"msg": "✅ Admin creado. Intenta login ahora."}
+    except Exception as e:
+        return {"msg": f"❌ Error: {e}", "error": str(e)}
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     log_error(f"🚀 Arrancando uvicorn en puerto {port}")
