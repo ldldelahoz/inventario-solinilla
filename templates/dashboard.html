@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Solinilla</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        button { padding: 8px 16px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📊 Dashboard Solinilla</h1>
+        <button onclick="logout()">Cerrar Sesión</button>
+    </header>
+    <main>
+        <h2>Inventario Actual</h2>
+        <pre id="content">Cargando...</pre>
+    </main>
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
+
+        async function loadProductos() {
+            const res = await fetch('/api/productos', {
+                headers: {'Authorization': `Bearer ${token}`}
+            });
+            if (res.status === 401) { logout(); return; }
+            const data = await res.json();
+            document.getElementById('content').textContent = JSON.stringify(data, null, 2);
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('rol');
+            window.location.href = '/';
+        }
+
+        loadProductos();
+    </script>
+</body>
+</html>
