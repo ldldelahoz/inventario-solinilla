@@ -651,48 +651,117 @@
             document.getElementById('movProducto').value = idProd;
         }
 
-        // Generar PDF
+        // Reemplaza tu función generarPDF con esta:
+
         async function generarPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-
-            // Título
-            doc.setFontSize(20);
-            doc.setTextColor(102, 126, 234);
-            doc.text('Solinilla - Inventario', 105, 20, { align: 'center' });
-
-            // Fecha
-            doc.setFontSize(12);
-            doc.setTextColor(100);
+            
+            // Configuración de estilo
             const fecha = new Date().toLocaleDateString('es-ES');
-            doc.text(`Fecha: ${fecha}`, 105, 30, { align: 'center' });
+            
+            // Título Principal
+            doc.setFontSize(16);
+            doc.setFont("helvetica", "bold");
+            doc.text("INVENTARIO RESTAURANTE SOLINILLA", 105, 15, { align: "center" });
+            
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.text(`FECHA: ${fecha}`, 105, 22, { align: "center" });
 
-            // Estadísticas
-            doc.setFontSize(14);
-            doc.setTextColor(0);
-            doc.text(`Total Productos: ${productos.length}`, 14, 45);
-            doc.text(`Stock Total: ${productos.reduce((sum, p) => sum + (p.stock || 0), 0)}`, 14, 52);
+            // Línea separadora
+            doc.setDrawColor(0);
+            doc.setLineWidth(0.5);
+            doc.line(14, 26, 196, 26);
 
-            // Tabla
-            const tableData = productos.map(p => [
-                p.id,
-                p.nombre,
-                p.stock.toString(),
-                p.fecha_vencimiento || 'N/A',
-                getEstadoStock(p.stock || 0).text
-            ]);
+            // Función auxiliar para determinar categoría por nombre
+            function obtenerCategoria(nombre) {
+                const n = nombre.toUpperCase();
+                if (n.includes("AGUA") || n.includes("CERVEZA") || n.includes("COCA") || n.includes("SODA") || n.includes("TE") || n.includes("POSTOBON") || n.includes("GATORADE") || n.includes("GINGER")) return "BEBIDAS";
+                if (n.includes("AGUARDIENTE") || n.includes("BUCHANNA") || n.includes("PARR") || n.includes("RON") || n.includes("TEQUILA") || n.includes("TRIPLESECC") || n.includes("V.BLANCO") || n.includes("V.TINTO")) return "RON Y VINOS";
+                if (n.includes("PULPA") || n.includes("LIMON") || n.includes("NARANJA") || n.includes("FRUTA")) return "PULPAS Y FRUTAS";
+                if (n.includes("HELADO") || n.includes("CHOCO") || n.includes("CONO") || n.includes("PALETA") || n.includes("POSTRE") || n.includes("CREMA") || n.includes("CEREZA")) return "HELADOS Y POSTRES";
+                if (n.includes("AZUCAR") || n.includes("CAFÉ") || n.includes("CAFE")) return "INSUMOS";
+                return "OTROS";
+            }
 
-            doc.autoTable({
-                startY: 60,
-                head: [['ID', 'Producto', 'Stock', 'Vencimiento', 'Estado']],
-                body: tableData,
-                theme: 'striped',
-                headStyles: { fillColor: [102, 126, 234] },
-                styles: { fontSize: 10 }
+            // 1. Agrupar y ordenar productos
+            let categorias = {
+                "BEBIDAS": [],
+                "RON Y VINOS": [],
+                "PULPAS Y FRUTAS": [],
+                "HELADOS Y POSTRES": [],
+                "INSUMOS": [],
+                "OTROS": []
+            };
+
+            productos.forEach(p => {
+                const cat = obtenerCategoria(p.nombre);
+                categorias[cat].push(p);
             });
 
-            // Guardar
-            doc.save(`inventario-solinilla-${fecha.replace(/\//g, '-')}.pdf`);
+            // Ordenar alfabéticamente dentro de cada categoría
+            Object.keys(categorias).forEach(cat => {
+                categorias[cat].sort((a, b) => a.nombre.localeCompare(b.nombre));
+            });
+
+            let startY = 30;
+
+            // 2. Generar tabla por categoría
+            const ordenCategorias = ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES", "INSUMOS", "OTROS"];
+
+            ordenCategorias.forEach(cat => {
+                if (categorias[cat].length > 0) {
+                    // Título de la categoría
+                    doc.setFontSize(11);
+                    doc.setFont("helvetica", "bold");
+                    doc.text(cat, 14, startY);
+                    
+                    // Datos de la tabla
+                    const bodyData = categorias[cat].map(p => {
+                        const stockVal = p.stock || 0;
+                        return [
+                            p.nombre,            // PRODUCTOS
+                            "0",                 // INV. INI (Por defecto 0, editable en físico)
+                            "0",                 // ENTRA
+                            stockVal.toString(), // TOTAL (Muestra stock actual)
+                            "0",                 // VENTAS/BAJAS
+                            stockVal.toString(), // INV. FINAL (Coincide con TOTAL)
+                            ""                   // OBSERVACIONES
+                        ];
+                    });
+
+                    doc.autoTable({
+                        startY: startY + 2,
+                        head: [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS/BAJAS', 'INV. FINAL', 'OBSERVACIONES']],
+                        body: bodyData,
+                        theme: 'grid', // Usa bordes tipo grid como en la foto
+                        styles: { fontSize: 8, cellPadding: 2, halign: 'left' },
+                        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                        columnStyles: {
+                            0: { cellWidth: 55 }, // Ancho columna productos
+                            1: { halign: 'center', cellWidth: 18 },
+                            2: { halign: 'center', cellWidth: 18 },
+                            3: { halign: 'center', cellWidth: 18 },
+                            4: { halign: 'center', cellWidth: 25 },
+                            5: { halign: 'center', cellWidth: 20 },
+                            6: { cellWidth: 30 }
+                        },
+                        margin: { left: 14, right: 14 }
+                    });
+
+                    startY = doc.lastAutoTable.finalY + 10;
+
+                    // Salto de página si es necesario
+                    if (startY > 270) {
+                        doc.addPage();
+                        startY = 20;
+                    }
+                }
+            });
+
+            // Guardar archivo
+            doc.save(`Inventario_Solinilla_${fecha.replace(/\//g, '-')}.pdf`);
             showAlert('✅ PDF generado exitosamente', 'success');
         }
 
