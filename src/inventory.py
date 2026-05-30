@@ -207,3 +207,16 @@ def generar_hoja_impresion(fecha: str = None):
                 except Exception as e:
                     return False, f"❌ Error: {e}"
             return [dict(row) for row in cur.fetchall()]
+        
+def eliminar_producto(id_prod: str):
+    """Elimina un producto de la base de datos."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM productos WHERE id = %s", (id_prod,))
+                conn.commit()
+                if cur.rowcount > 0:
+                    return True, "✅ Producto eliminado"
+                return False, "❌ Producto no encontrado"
+    except Exception as e:
+        return False, f"❌ Error al eliminar: {e}"
