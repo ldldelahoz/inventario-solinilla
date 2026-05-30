@@ -338,97 +338,143 @@
         function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
         
         // Función generarPDF (la misma que te di antes pero simplificada para no repetir código)
-        function generarPDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const fecha = new Date().toLocaleDateString('es-ES');
-            
-            // Título
-            doc.setFontSize(16);
-            doc.setFont("helvetica", "bold");
-            doc.text("INVENTARIO RESTAURANTE SOLINILLA", 105, 15, { align: "center" });
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.text(`FECHA: ${fecha}`, 105, 22, { align: "center" });
-            doc.line(14, 26, 196, 26);
-
-            // Función para categorizar
-            function obtenerCategoria(nombre) {
-                const n = nombre.toUpperCase();
-                if (n.includes("AGUA") || n.includes("CERVEZA") || n.includes("COCA") || n.includes("SODA") || n.includes("TE") || n.includes("POSTOBON") || n.includes("GATORADE") || n.includes("GINGER")) return "BEBIDAS";
-                if (n.includes("AGUARDIENTE") || n.includes("BUCHANNA") || n.includes("PARR") || n.includes("RON") || n.includes("TEQUILA") || n.includes("TRIPLESECC") || n.includes("V.BLANCO") || n.includes("V.TINTO")) return "RON Y VINOS";
-                if (n.includes("PULPA") || n.includes("LIMON") || n.includes("NARANJA")) return "PULPAS Y FRUTAS";
-                if (n.includes("HELADO") || n.includes("CHOCO") || n.includes("CONO") || n.includes("PALETA") || n.includes("POSTRE") || n.includes("CREMA") || n.includes("CEREZA")) return "HELADOS Y POSTRES";
-                if (n.includes("AZUCAR") || n.includes("CAFÉ") || n.includes("CAFE")) return "INSUMOS";
-                return "OTROS";
-            }
-
-            // Agrupar productos
-            let categorias = { "BEBIDAS": [], "RON Y VINOS": [], "PULPAS Y FRUTAS": [], "HELADOS Y POSTRES": [], "INSUMOS": [], "OTROS": [] };
-            
-            productos.forEach(p => {
-                const cat = obtenerCategoria(p.nombre);
-                categorias[cat].push(p);
-            });
-
-            // Ordenar
-            Object.keys(categorias).forEach(cat => {
-                categorias[cat].sort((a, b) => a.nombre.localeCompare(b.nombre));
-            });
-
-            let startY = 30;
-            const ordenCategorias = ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES", "INSUMOS", "OTROS"];
-
-            ordenCategorias.forEach(cat => {
-                if (categorias[cat].length > 0) {
-                    doc.setFontSize(11);
-                    doc.setFont("helvetica", "bold");
-                    doc.text(cat, 14, startY);
-                    
-                    const bodyData = categorias[cat].map(p => {
-                        const stock = p.stock || 0;
-                        return [
-                            p.nombre,
-                            "0",           // INV. INI
-                            "0",           // ENTRA
-                            stock.toString(), // TOTAL (stock actual)
-                            "0",           // VENTAS/BAJAS
-                            stock.toString(), // INV. FINAL
-                            ""             // OBSERVACIONES
-                        ];
-                    });
-
-                    doc.autoTable({
-                        startY: startY + 2,
-                        head: [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS/BAJAS', 'INV. FINAL', 'OBSERVACIONES']],
-                        body: bodyData,
-                        theme: 'grid',
-                        styles: { fontSize: 8, cellPadding: 2, halign: 'left' },
-                        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
-                        columnStyles: {
-                            0: { cellWidth: 55 },
-                            1: { halign: 'center', cellWidth: 18 },
-                            2: { halign: 'center', cellWidth: 18 },
-                            3: { halign: 'center', cellWidth: 18 },
-                            4: { halign: 'center', cellWidth: 25 },
-                            5: { halign: 'center', cellWidth: 20 },
-                            6: { cellWidth: 30 }
-                        },
-                        margin: { left: 14, right: 14 }
-                    });
-
-                    startY = doc.lastAutoTable.finalY + 10;
-
-                    if (startY > 270) {
-                        doc.addPage();
-                        startY = 20;
-                    }
+        async function generarPDF() {
+    // 1. Primero cargar los productos frescos desde la API
+    alert('⏳ Cargando productos para el PDF...');
+    
+            try {
+                const res = await fetch('/api/productos', { 
+                    headers: { 'Authorization': `Bearer ${token}` } 
+                });
+                
+                if (!res.ok) {
+                    alert('❌ Error al cargar productos');
+                    return;
                 }
-            });
+                
+                const data = await res.json();
+                const productosActuales = data.productos || [];
+                
+                if (productosActuales.length === 0) {
+                    alert('⚠️ No hay productos en la base de datos');
+                    return;
+                }
 
-            // Guardar
-            doc.save(`Inventario_Solinilla_${fecha.replace(/\//g, '-')}.pdf`);
-            alert('✅ PDF generado exitosamente');
+                // 2. Ahora generar el PDF con los datos
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const fecha = new Date().toLocaleDateString('es-ES');
+                
+                // Título
+                doc.setFontSize(16);
+                doc.setFont("helvetica", "bold");
+                doc.text("INVENTARIO RESTAURANTE SOLINILLA", 105, 15, { align: "center" });
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.text(`FECHA: ${fecha}`, 105, 22, { align: "center" });
+                doc.line(14, 26, 196, 26);
+
+                // Función para categorizar
+                function obtenerCategoria(nombre) {
+                    const n = nombre.toUpperCase();
+                    if (n.includes("AGUA") || n.includes("CERVEZA") || n.includes("COCA") || n.includes("SODA") || n.includes("TE") || n.includes("POSTOBON") || n.includes("GATORADE") || n.includes("GINGER")) return "BEBIDAS";
+                    if (n.includes("AGUARDIENTE") || n.includes("BUCHANNA") || n.includes("PARR") || n.includes("RON") || n.includes("TEQUILA") || n.includes("TRIPLESECC") || n.includes("V.BLANCO") || n.includes("V.TINTO")) return "RON Y VINOS";
+                    if (n.includes("PULPA") || n.includes("LIMON") || n.includes("NARANJA")) return "PULPAS Y FRUTAS";
+                    if (n.includes("HELADO") || n.includes("CHOCO") || n.includes("CONO") || n.includes("PALETA") || n.includes("POSTRE") || n.includes("CREMA") || n.includes("CEREZA")) return "HELADOS Y POSTRES";
+                    if (n.includes("AZUCAR") || n.includes("CAFÉ") || n.includes("CAFE")) return "INSUMOS";
+                    return "OTROS";
+                }
+
+                // Agrupar productos
+                let categorias = { 
+                    "BEBIDAS": [], 
+                    "RON Y VINOS": [], 
+                    "PULPAS Y FRUTAS": [], 
+                    "HELADOS Y POSTRES": [], 
+                    "INSUMOS": [], 
+                    "OTROS": [] 
+                };
+                
+                productosActuales.forEach(p => {
+                    const cat = obtenerCategoria(p.nombre);
+                    categorias[cat].push(p);
+                });
+
+                // Ordenar alfabéticamente
+                Object.keys(categorias).forEach(cat => {
+                    categorias[cat].sort((a, b) => a.nombre.localeCompare(b.nombre));
+                });
+
+                let startY = 30;
+                const ordenCategorias = ["BEBIDAS", "RON Y VINOS", "PULPAS Y FRUTAS", "HELADOS Y POSTRES", "INSUMOS", "OTROS"];
+                let productosTotales = 0;
+
+                ordenCategorias.forEach(cat => {
+                    if (categorias[cat].length > 0) {
+                        productosTotales += categorias[cat].length;
+                        
+                        // Título de categoría
+                        doc.setFontSize(11);
+                        doc.setFont("helvetica", "bold");
+                        doc.text(cat, 14, startY);
+                        
+                        // Datos de la tabla (con ceros donde corresponde)
+                        const bodyData = categorias[cat].map(p => {
+                            const stock = p.stock || 0;
+                            return [
+                                p.nombre,            // PRODUCTOS
+                                "0",                 // INV. INI
+                                "0",                 // ENTRA
+                                stock.toString(),    // TOTAL (muestra stock actual)
+                                "0",                 // VENTAS/BAJAS
+                                stock.toString(),    // INV. FINAL
+                                ""                   // OBSERVACIONES
+                            ];
+                        });
+
+                        // Generar tabla
+                        doc.autoTable({
+                            startY: startY + 2,
+                            head: [['PRODUCTOS', 'INV. INI', 'ENTRA', 'TOTAL', 'VENTAS/BAJAS', 'INV. FINAL', 'OBSERVACIONES']],
+                            body: bodyData,
+                            theme: 'grid',
+                            styles: { fontSize: 8, cellPadding: 2, halign: 'left' },
+                            headStyles: { 
+                                fillColor: [255, 255, 255], 
+                                textColor: [0, 0, 0], 
+                                fontStyle: 'bold', 
+                                halign: 'center' 
+                            },
+                            columnStyles: {
+                                0: { cellWidth: 55 },
+                                1: { halign: 'center', cellWidth: 18 },
+                                2: { halign: 'center', cellWidth: 18 },
+                                3: { halign: 'center', cellWidth: 18 },
+                                4: { halign: 'center', cellWidth: 25 },
+                                5: { halign: 'center', cellWidth: 20 },
+                                6: { cellWidth: 30 }
+                            },
+                            margin: { left: 14, right: 14 }
+                        });
+
+                        startY = doc.lastAutoTable.finalY + 10;
+
+                        // Salto de página si es necesario
+                        if (startY > 270) {
+                            doc.addPage();
+                            startY = 20;
+                        }
+                    }
+                });
+
+                // Guardar archivo
+                doc.save(`Inventario_Solinilla_${fecha.replace(/\//g, '-')}.pdf`);
+                alert(`✅ PDF generado con ${productosTotales} productos`);
+                
+            } catch (error) {
+                console.error('Error generando PDF:', error);
+                alert('❌ Error al generar PDF: ' + error.message);
+            }
         }
     </script>
 </body>
