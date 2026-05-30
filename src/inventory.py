@@ -193,4 +193,17 @@ def generar_hoja_impresion(fecha: str = None):
                 LEFT JOIN snapshots_inventario s ON p.id = s.producto_id AND s.fecha = %s
                 ORDER BY p.nombre
             """, (fecha,))
+            def eliminar_producto(id_prod: str):
+                """Elimina un producto de la base de datos."""
+                try:
+                    with get_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("DELETE FROM productos WHERE id = %s", (id_prod,))
+                            conn.commit()
+                            if cur.rowcount > 0:
+                                return True, "✅ Producto eliminado"
+                            else:
+                                return False, "❌ Producto no encontrado"
+                except Exception as e:
+                    return False, f"❌ Error: {e}"
             return [dict(row) for row in cur.fetchall()]

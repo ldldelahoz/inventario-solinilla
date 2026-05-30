@@ -135,7 +135,17 @@ async def crear_prod(data: ProductoCreate, user: dict = Depends(require_admin)):
     ok, msg = inventory.crear_producto(data.id, data.nombre, data.fecha_vencimiento)
     if not ok: raise HTTPException(status_code=400, detail=msg)
     return {"msg": msg}
-
+@app.delete("/api/productos/{producto_id}")
+async def delete_producto(producto_id: str, current_user: dict = Depends(get_current_user)):
+    """Elimina un producto por su ID."""
+    try:
+        from src.inventory import eliminar_producto
+        success, msg = eliminar_producto(producto_id)
+        if success:
+            return {"msg": msg}
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @app.post("/api/movimientos")
 async def registrar_mov(data: MovimientoCreate, user: dict = Depends(get_current_user)):
     ok, msg = inventory.registrar_movimiento(data.id_prod, data.tipo, data.cantidad, data.motivo)

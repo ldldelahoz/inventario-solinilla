@@ -239,6 +239,7 @@
                         <td>
                             <button class="btn btn-sm btn-outline-success" onclick="registrarRapido('${p.id}', 'entrada')">+</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="registrarRapido('${p.id}', 'salida')">-</button>
+                            <button class="btn btn-sm btn-outline-dark" onclick="eliminarProducto('${p.id}', '${p.nombre}')" title="Eliminar">🗑️</button>
                         </td>
                     </tr>`;
                 
@@ -439,6 +440,28 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('❌ Error al generar PDF');
+            }
+        }
+        async function eliminarProducto(id, nombre) {
+            if (!confirm(`⚠️ ¿Estás seguro de eliminar "${nombre}"?\nEsta acción no se puede deshacer.`)) return;
+            
+            try {
+                const res = await fetch(`/api/productos/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    alert('✅ Producto eliminado exitosamente');
+                    cargarProductos(); // Recarga la tabla
+                    cargarMovimientos(); // Actualiza los selects
+                } else {
+                    alert('❌ ' + (data.detail || 'Error al eliminar'));
+                }
+            } catch (e) {
+                alert('❌ Error de conexión al eliminar');
             }
         }
     </script>
