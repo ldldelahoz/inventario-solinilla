@@ -166,11 +166,32 @@ async def delete_movimiento(mov_id: int, user: dict = Depends(require_admin)):
     if not ok: raise HTTPException(status_code=400, detail=msg)
     return {"msg": msg}
 
+# --- Agrega esto a main.py si no está ---
+
 @app.post("/api/inventario/cerrar")
-async def cerrar_inv(data: dict, user: dict = Depends(require_admin)):
-    ok, msg = inventory.cerrar_inventario_dia(data.get("fecha"), data.get("observaciones", ""))
-    if not ok: raise HTTPException(status_code=400, detail=msg)
-    return {"msg": msg}
+async def cerrar_inventario(fecha: str, observaciones: str = "", current_user: dict = Depends(get_current_user)):
+    """Cierra el inventario del día y guarda el snapshot."""
+    try:
+        # Importamos la función del archivo de inventario
+        from src.inventory import cerrar_inventario_dia
+        success, msg = cerrar_inventario_dia(fecha, observaciones)
+        if success:
+            return {"msg": msg}
+        else:
+            raise HTTPException(status_code=400, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/movimientos")
+async def obtener_movimientos(fecha: str = None, current_user: dict = Depends(get_current_user)):
+    """Obtiene movimientos, filtrando por fecha si se provee."""
+    from datetime import date
+    if not fecha:
+        fecha = date.today().isoformat()
+        
+    from src.inventory import obtener_movimientos_dia
+    movimientos = obtener_movimientos_dia(fecha)
+    return {"movimientos": movimientos}
 
 @app.get("/api/hoja-inventario")
 async def get_hoja_impresion(fecha: Optional[str] = Query(None), user: dict = Depends(get_current_user)):
