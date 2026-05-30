@@ -171,12 +171,95 @@
             </div>
 
             <!-- TAB 3: REPORTE -->
+            <!-- TAB 3: REPORTE (Igual al local) -->
             <div class="tab-pane fade" id="reporte">
                 <div class="card">
-                    <div class="card-body text-center py-5">
-                        <h4>📊 Generar Reporte PDF</h4>
-                        <p>Descarga la hoja de inventario para imprimir.</p>
-                        <button class="btn btn-success btn-lg" onclick="generarPDF()">📄 Descargar PDF</button>
+                    <div class="card-header">
+                        <h5 class="mb-0">📊 Reporte Diario</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Selector de fecha -->
+                        <div class="row g-3 align-items-end mb-4">
+                            <div class="col-md-4">
+                                <label class="form-label">Fecha del reporte</label>
+                                <input type="date" class="form-control" id="reporteFecha" required>
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-primary w-100" onclick="generarReporteDia()">
+                                    🔍 Generar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Resultados del reporte -->
+                        <div id="resultadoReporte" style="display: none;">
+                            <!-- Estadísticas -->
+                            <div class="row mb-4">
+                                <div class="col-md-3">
+                                    <div class="card bg-primary text-white">
+                                        <div class="card-body text-center">
+                                            <h6>Total Movimientos</h6>
+                                            <h3 id="totalMovimientos">0</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card bg-success text-white">
+                                        <div class="card-body text-center">
+                                            <h6>Entradas</h6>
+                                            <h3 id="totalEntradas">0</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card bg-danger text-white">
+                                        <div class="card-body text-center">
+                                            <h6>Salidas</h6>
+                                            <h3 id="totalSalidas">0</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="card bg-info text-white">
+                                        <div class="card-body text-center">
+                                            <h6>Productos Afectados</h6>
+                                            <h3 id="totalProductos">0</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tabla de movimientos -->
+                            <h6 class="mb-3">📋 Movimientos del Día</h6>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Hora</th>
+                                            <th>Producto</th>
+                                            <th>Tipo</th>
+                                            <th>Cantidad</th>
+                                            <th>Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tablaReporteMovimientos">
+                                        <!-- Se llena con JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Botón imprimir -->
+                            <div class="text-end mt-3">
+                                <button class="btn btn-success" onclick="imprimirReporte()">
+                                    🖨️ Imprimir Reporte
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Mensaje cuando no hay datos -->
+                        <div id="sinDatosReporte" class="text-center text-muted py-5">
+                            <p class="mb-0">Selecciona una fecha y haz clic en "Generar" para ver el reporte</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -464,6 +547,79 @@
                 alert('❌ Error de conexión al eliminar');
             }
         }
+        // Función para generar reporte del día
+        async function generarReporteDia() {
+            const fecha = document.getElementById('reporteFecha').value;
+            
+            if (!fecha) {
+                alert('⚠️ Por favor selecciona una fecha');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/movimientos?fecha=${fecha}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await res.json();
+                const movimientos = data.movimientos || [];
+
+                // Ocultar mensaje de "sin datos"
+                document.getElementById('sinDatosReporte').style.display = 'none';
+                document.getElementById('resultadoReporte').style.display = 'block';
+
+                // Calcular estadísticas
+                const entradas = movimientos.filter(m => m.tipo === 'entrada');
+                const salidas = movimientos.filter(m => m.tipo === 'salida');
+                const productosUnicos = new Set(movimientos.map(m => m.producto_id || m.id_prod)).size;
+
+                // Actualizar cards
+                document.getElementById('totalMovimientos').textContent = movimientos.length;
+                document.getElementById('totalEntradas').textContent = entradas.length;
+                document.getElementById('totalSalidas').textContent = salidas.length;
+                document.getElementById('totalProductos').textContent = productosUnicos;
+
+                // Llenar tabla
+                const tbody = document.getElementById('tablaReporteMovimientos');
+                tbody.innerHTML = '';
+
+                if (movimientos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay movimientos registrados para esta fecha</td></tr>';
+                } else {
+                    movimientos.forEach(m => {
+                        const hora = new Date(m.fecha).toLocaleTimeString();
+                        const tipoBadge = m.tipo === 'entrada' 
+                            ? '<span class="badge bg-success">Entrada</span>' 
+                            : '<span class="badge bg-danger">Salida</span>';
+                        
+                        tbody.innerHTML += `
+                            <tr>
+                                <td>${hora}</td>
+                                <td>${m.nombre || m.producto_id}</td>
+                                <td>${tipoBadge}</td>
+                                <td><strong>${m.cantidad}</strong></td>
+                                <td>${m.motivo || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('❌ Error al generar reporte');
+            }
+        }
+
+        // Función para imprimir reporte
+        function imprimirReporte() {
+            const fecha = document.getElementById('reporteFecha').value;
+            window.print();
+        }
+
+        // Establecer fecha de hoy por defecto al cargar
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('reporteFecha').valueAsDate = new Date();
+        });
     </script>
 </body>
 </html>
